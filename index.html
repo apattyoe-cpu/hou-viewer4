@@ -1,11 +1,9 @@
-<!-- 国保法 条文ビューア（GitHub Pages / iPad / 完全静的版） -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>条文ビューア</title>
-
+  <title>法令 条文ビューア</title>
   <style>
     body {
       margin: 0;
@@ -13,31 +11,39 @@
       background: #f3f4f6;
     }
 
-    .layout {
+    .app {
       display: flex;
       height: 100vh;
     }
 
-    .left {
-      width: 40%;
-      background: white;
-      border-right: 1px solid #ddd;
+    .pane {
       display: flex;
       flex-direction: column;
+      background: white;
+    }
+
+    .left {
+      width: 50%;
+      border-right: 1px solid #ddd;
     }
 
     .right {
       flex: 1;
-      display: flex;
-      flex-direction: column;
     }
 
     .header {
+      padding: 12px;
+      border-bottom: 1px solid #ddd;
+      background: #fff;
+      font-weight: bold;
+    }
+
+    .toolbar {
       padding: 10px;
       border-bottom: 1px solid #ddd;
-      background: white;
       display: flex;
       gap: 8px;
+      align-items: center;
       flex-wrap: wrap;
     }
 
@@ -45,30 +51,18 @@
       width: 100%;
       height: 100%;
       border: none;
-    }
-
-    .viewer {
-      flex: 1;
-      background: #ccc;
+      background: #e5e7eb;
     }
 
     input[type="number"] {
-      width: 120px;
       padding: 6px;
       font-size: 16px;
+      width: 140px;
     }
 
     button {
-      padding: 8px 14px;
+      padding: 6px 14px;
       font-size: 16px;
-      border-radius: 8px;
-      border: none;
-      background: #2563eb;
-      color: white;
-    }
-
-    button:hover {
-      opacity: 0.9;
       cursor: pointer;
     }
 
@@ -76,93 +70,123 @@
       color: red;
       font-size: 14px;
     }
-
-    @media (max-width: 900px) {
-      .layout {
-        flex-direction: column;
-      }
-      .left {
-        width: 100%;
-        height: 50%;
-      }
-      .right {
-        height: 50%;
-      }
-    }
   </style>
 </head>
 
 <body>
+  <div class="app">
 
-<div class="layout">
-
-  <!-- 左：全文 -->
-  <div class="left">
-    <div class="header">
-      <input type="file" id="fileInput" accept="application/pdf" />
-      <span id="fileName"></span>
-      <span id="error" class="error"></span>
+    <!-- 左：全文スクロール表示 -->
+    <div class="pane left">
+      <div class="header">全文表示</div>
+      <iframe id="leftViewer"></iframe>
     </div>
 
-    <div class="viewer">
-      <iframe id="leftPdf"></iframe>
+    <!-- 右：条文ジャンプ表示 -->
+    <div class="pane right">
+      <div class="header">条文ジャンプ表示</div>
+
+      <div class="toolbar">
+        <input type="file" accept="application/pdf" id="fileInput" />
+
+        <label>条番号:</label>
+        <input type="number" id="articleInput" placeholder="例: 11" />
+
+        <button onclick="jumpArticle()">条文ジャンプ</button>
+
+        <span id="error" class="error"></span>
+      </div>
+
+      <iframe id="rightViewer"></iframe>
     </div>
+
   </div>
-
-  <!-- 右：ジャンプ表示 -->
-  <div class="right">
-    <div class="header">
-      <input type="number" id="pageInput" placeholder="ページ" />
-      <button onclick="jumpPage()">ジャンプ</button>
-    </div>
-
-    <div class="viewer">
-      <iframe id="rightPdf"></iframe>
-    </div>
-  </div>
-
-</div>
 
 <script>
-
 let pdfUrl = null;
 
 const fileInput = document.getElementById("fileInput");
-const leftPdf = document.getElementById("leftPdf");
-const rightPdf = document.getElementById("rightPdf");
-const fileName = document.getElementById("fileName");
-const errorText = document.getElementById("error");
+const articleInput = document.getElementById("articleInput");
+const leftViewer = document.getElementById("leftViewer");
+const rightViewer = document.getElementById("rightViewer");
+const errorSpan = document.getElementById("error");
 
-fileInput.addEventListener("change", (e) => {
-  const file = e.target.files[0];
+// ===== 条番号 → PDFページ対応表（仮） =====
+// ※ 実務ではここをJSON化 or 自動生成
+// ※ 今は例として一部のみ
+const articleToPage = {
+  1: 1,
+  2: 1,
+  3: 2,
+  4: 3,
+  5: 4,
+  6: 5,
+  7: 6,
+  8: 7,
+  9: 8,
+  10: 9,
+  11: 10,
+  12: 11,
+  13: 12,
+  14: 13,
+  15: 14,
+  16: 15,
+  20: 18,
+  25: 22,
+  30: 26,
+  40: 34,
+  42: 36,
+  50: 44,
+  60: 55,
+  70: 70,
+  75: 78,
+  80: 86,
+  82: 88
+};
+
+// ===== PDF読み込み =====
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files[0];
   if (!file) return;
 
-  errorText.textContent = "";
+  try {
+    errorSpan.textContent = "";
 
-  if (file.type !== "application/pdf") {
-    errorText.textContent = "PDFを選択してください";
-    return;
+    if (file.type !== "application/pdf") {
+      throw new Error("PDFファイルを選択してください");
+    }
+
+    pdfUrl = URL.createObjectURL(file);
+
+    leftViewer.src = pdfUrl;
+    rightViewer.src = pdfUrl + "#page=1";
+
+  } catch (e) {
+    console.error("PDF LOAD ERROR:", e);
+    errorSpan.textContent = e.message || "PDF読み込みエラー";
   }
-
-  pdfUrl = URL.createObjectURL(file);
-
-  leftPdf.src = pdfUrl;
-  rightPdf.src = pdfUrl;
-  fileName.textContent = file.name;
 });
 
-function jumpPage() {
+// ===== 条文ジャンプ =====
+function jumpArticle() {
   if (!pdfUrl) return;
 
-  const page = Number(document.getElementById("pageInput").value);
+  const article = Number(articleInput.value);
 
-  if (!page || page <= 0) {
-    errorText.textContent = "正しいページを入力してください";
+  if (!article || article <= 0) {
+    errorSpan.textContent = "正しい条番号を入力してください";
     return;
   }
 
-  errorText.textContent = "";
-  rightPdf.src = pdfUrl + "#page=" + page;
+  const page = articleToPage[article];
+
+  if (!page) {
+    errorSpan.textContent = "未登録の条番号です（対応表に未登録）";
+    return;
+  }
+
+  errorSpan.textContent = "";
+  rightViewer.src = pdfUrl + "#page=" + page;
 }
 
 </script>
@@ -170,11 +194,24 @@ function jumpPage() {
 </body>
 </html>
 
-<!-- ===== テストケース =====
-1. PDF選択 → 左右に表示
-2. ページジャンプ → 右だけ移動
-3. PDF以外 → エラー表示
-4. iPad Safari → 表示可能
-5. GitHub Pages → そのまま動作
-6. オフライン → ローカルPDF表示OK
+<!--
+===== テストケース =====
+
+■ PDF表示
+1. 正常PDF → 左全文表示・右1ページ目表示
+2. PDF以外 → エラー表示
+
+■ 条文ジャンプ
+3. 登録済条番号 → 該当ページジャンプ
+4. 未登録条番号 → エラー表示
+5. 空入力 → エラー表示
+6. 0以下 → エラー表示
+
+■ 実機
+7. iPad Safari → 表示可
+8. GitHub Pages → 表示可
+
+■ 将来拡張
+9. articleToPage → JSON外部化
+10. PDF自動解析 → 自動生成
 -->
