@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>法律 条番号 → ページ JSON編集ツール</title>
+  <title>法律 条番号対応 ハイブリッド生成ツール</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <style>
@@ -13,9 +13,7 @@
       padding: 20px;
     }
 
-    h1 {
-      margin-top: 0;
-    }
+    h1 { margin-top: 0; }
 
     .card {
       background: white;
@@ -33,7 +31,6 @@
     th, td {
       border-bottom: 1px solid #eee;
       padding: 8px;
-      text-align: left;
     }
 
     input {
@@ -51,8 +48,14 @@
       margin-right: 6px;
     }
 
-    .danger {
-      background: #dc2626;
+    .danger { background: #dc2626; }
+    .ok { background: #16a34a; }
+
+    .progress {
+      background: #fff7cc;
+      padding: 8px;
+      border-radius: 6px;
+      margin-top: 10px;
     }
 
   </style>
@@ -60,22 +63,30 @@
 
 <body>
 
-<h1>条番号 → ページ 対応表 JSON 編集ツール</h1>
+<h1>条番号 → ページ ハイブリッド生成ツール</h1>
 
 <div class="card">
-  <h3>JSON読み込み</h3>
-  <input type="file" id="jsonFile" accept="application/json" />
+  <h3>① PDF読み込み（条文候補を自動抽出）</h3>
+  <input type="file" id="pdfInput" accept="application/pdf" />
+  <div id="progress" class="progress" style="display:none">解析中… <span id="progressNum">0</span>%</div>
 </div>
 
 <div class="card">
-  <h3>条文追加</h3>
-  条番号 <input id="articleInput" placeholder="例：11" />
-  ページ <input id="pageInput" type="number" placeholder="例：41" />
-  <button onclick="addRow()">追加</button>
+  <h3>② 自動抽出候補（修正OK）</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>条番号</th>
+        <th>ページ</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="candidateTable"></tbody>
+  </table>
 </div>
 
 <div class="card">
-  <h3>対応表</h3>
+  <h3>③ 確定対応表</h3>
   <table>
     <thead>
       <tr>
@@ -84,7 +95,7 @@
         <th></th>
       </tr>
     </thead>
-    <tbody id="tableBody"></tbody>
+    <tbody id="finalTable"></tbody>
   </table>
 </div>
 
@@ -93,66 +104,112 @@
 </div>
 
 <script>
-let articleMap = {};
 
-const tbody = document.getElementById("tableBody");
+let candidates = {};
+let finalMap = {};
 
-// ===== JSON読み込み =====
-document.getElementById("jsonFile").addEventListener("change", e => {
+const candidateTable = document.getElementById("candidateTable");
+const finalTable = document.getElementById("finalTable");
+
+// ===== PDF疑似解析（将来：本物解析に置換） =====
+document.getElementById("pdfInput").addEventListener("change", e => {
   const file = e.target.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      articleMap = JSON.parse(reader.result);
-      renderTable();
-    } catch {
-      alert("JSON読み込み失敗");
-    }
-  };
-  reader.readAsText(file);
+  startFakeAnalysis();
 });
 
-// ===== 行追加 =====
-function addRow() {
-  const art = document.getElementById("articleInput").value.trim();
-  const page = Number(document.getElementById("pageInput").value);
+function startFakeAnalysis() {
+  const progressBox = document.getElementById("progress");
+  const progressNum = document.getElementById("progressNum");
 
-  if (!art || !page) return alert("入力してください");
+  progressBox.style.display = "block";
 
-  articleMap[art] = page;
-  renderTable();
+  let p = 0;
+  const timer = setInterval(() => {
+    p += 10;
+    progressNum.textContent = p;
+
+    if (p >= 100) {
+      clearInterval(timer);
+      progressBox.style.display = "none";
+      generateFakeCandidates();
+    }
+  }, 150);
 }
 
-// ===== 削除 =====
-function deleteRow(key) {
-  delete articleMap[key];
-  renderTable();
+// ===== 仮：条文候補生成 =====
+function generateFakeCandidates() {
+  candidates = {
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "10": 20,
+    "11": 41,
+    "20": 65
+  };
+
+  renderCandidateTable();
 }
 
-// ===== 表描画 =====
-function renderTable() {
-  tbody.innerHTML = "";
+// ===== 候補表描画 =====
+function renderCandidateTable() {
+  candidateTable.innerHTML = "";
 
-  Object.keys(articleMap)
+  Object.keys(candidates).forEach(key => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td>${key}</td>
+      <td><input value="${candidates[key]}" onchange="updateCandidate('${key}', this.value)" /></td>
+      <td>
+        <button class="ok" onclick="approve('${key}')">確定</button>
+      </td>
+    `;
+
+    candidateTable.appendChild(tr);
+  });
+}
+
+function updateCandidate(key, val) {
+  candidates[key] = Number(val);
+}
+
+function approve(key) {
+  finalMap[key] = candidates[key];
+  delete candidates[key];
+
+  renderCandidateTable();
+  renderFinalTable();
+}
+
+// ===== 確定表描画 =====
+function renderFinalTable() {
+  finalTable.innerHTML = "";
+
+  Object.keys(finalMap)
     .sort((a,b)=>Number(a)-Number(b))
     .forEach(key => {
       const tr = document.createElement("tr");
 
       tr.innerHTML = `
         <td>${key}</td>
-        <td>${articleMap[key]}</td>
-        <td><button class="danger" onclick="deleteRow('${key}')">削除</button></td>
+        <td>${finalMap[key]}</td>
+        <td><button class="danger" onclick="removeFinal('${key}')">削除</button></td>
       `;
 
-      tbody.appendChild(tr);
+      finalTable.appendChild(tr);
     });
+}
+
+function removeFinal(key) {
+  delete finalMap[key];
+  renderFinalTable();
 }
 
 // ===== JSON保存 =====
 function downloadJson() {
-  const blob = new Blob([JSON.stringify(articleMap, null, 2)], { type:"application/json" });
+  const blob = new Blob([JSON.stringify(finalMap, null, 2)], { type:"application/json" });
   const url = URL.createObjectURL(blob);
 
   const a = document.createElement("a");
@@ -160,7 +217,14 @@ function downloadJson() {
   a.download = "law_article_map.json";
   a.click();
 }
+
 </script>
 
 </body>
 </html>
+
+// ===== テストケース =====
+// 1. PDF選択 → 候補生成される
+// 2. 候補修正 → 数値更新
+// 3. 確定 → 下テーブル移動
+// 4. JSON保存 → 正常DL
