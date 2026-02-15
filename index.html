@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>法令 条文ビューア（自動条対応生成版）</title>
+  <title>法令 条文ビューア（進捗可視化版 v2）</title>
 
   <style>
     body { margin:0; font-family:system-ui, sans-serif; background:#f3f4f6; }
@@ -18,6 +18,9 @@
     button { padding:6px 14px; font-size:16px; cursor:pointer; }
     .error { color:red; font-size:14px; }
     .ok { color:green; font-size:14px; }
+    .progressWrap { width:300px; height:16px; background:#ddd; border-radius:8px; overflow:hidden; }
+    .progressBar { height:100%; width:0%; background:#4caf50; transition:width 0.2s; }
+    .logBox { font-size:12px; background:#111; color:#0f0; padding:6px; height:80px; overflow:auto; }
   </style>
 </head>
 
@@ -45,6 +48,14 @@
       <span id="status"></span>
     </div>
 
+    <div style="padding:8px">
+      <div class="progressWrap">
+        <div id="progressBar" class="progressBar"></div>
+      </div>
+      <div id="progressText" style="font-size:12px"></div>
+      <div id="logBox" class="logBox"></div>
+    </div>
+
     <iframe id="rightViewer"></iframe>
   </div>
 
@@ -64,6 +75,14 @@ const leftViewer = document.getElementById("leftViewer");
 const rightViewer = document.getElementById("rightViewer");
 const articleInput = document.getElementById("articleInput");
 const statusSpan = document.getElementById("status");
+const progressBar = document.getElementById("progressBar");
+const progressText = document.getElementById("progressText");
+const logBox = document.getElementById("logBox");
+
+function log(msg){
+  logBox.innerHTML += msg + "<br>";
+  logBox.scrollTop = logBox.scrollHeight;
+}
 
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
@@ -78,9 +97,12 @@ fileInput.addEventListener("change", async () => {
   leftViewer.src = pdfUrl;
   rightViewer.src = pdfUrl + "#page=1";
 
+  log("PDF読み込み開始");
+
   const buffer = await file.arrayBuffer();
   pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
 
+  log("PDF解析準備完了 ページ数=" + pdfDoc.numPages);
   status("PDF読み込み完了", false);
 });
 
@@ -90,15 +112,16 @@ async function buildMapping() {
     return;
   }
 
-  status("条文解析中…", false);
   articleToPage = {};
-
+  const total = pdfDoc.numPages;
   const articleRegex = /第\s*(\d+)\s*条/g;
 
-  for (let p = 1; p <= pdfDoc.numPages; p++) {
+  log("条文解析開始");
+
+  for (let p = 1; p <= total; p++) {
+
     const page = await pdfDoc.getPage(p);
     const text = await page.getTextContent();
-
     const pageText = text.items.map(i => i.str).join("");
 
     let match;
@@ -106,11 +129,19 @@ async function buildMapping() {
       const article = Number(match[1]);
       if (!articleToPage[article]) {
         articleToPage[article] = p;
+        log(`検出 第${article}条 → p${p}`);
       }
     }
+
+    const percent = Math.floor((p / total) * 100);
+    progressBar.style.width = percent + "%";
+    progressText.innerText = `${p} / ${total} ページ解析 (${percent}%)`;
+
+    await new Promise(r => setTimeout(r, 5));
   }
 
-  status(`対応生成完了 (${Object.keys(articleToPage).length}条検出)`, false);
+  log("解析完了 条数=" + Object.keys(articleToPage).length);
+  status("対応生成完了", false);
 }
 
 function jumpArticle() {
@@ -120,7 +151,7 @@ function jumpArticle() {
   const page = articleToPage[article];
 
   if (!page) {
-    status("条番号未検出（先に自動生成してください）", true);
+    status("条番号未検出", true);
     return;
   }
 
@@ -141,14 +172,3 @@ function status(msg, isError) {
 
 </body>
 </html>
-
-<!--
-テスト
-
-1 PDF読込
-2 自動生成クリック
-3 条番号ジャンプ
-4 iPad Safari
-5 GitHub Pages
-
--->
