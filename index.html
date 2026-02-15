@@ -1,203 +1,134 @@
-// 法律横断 条文ツール（複数法律対応 / PDF → 条文JSON生成 + ビューア統合版）
+// 国保法 条文ビューア（左：全文固定 / 右：条文ジャンプ対応 / 複数法律拡張前提）
 
 import React, { useState } from "react";
 
-// ===== 設計（複数法律対応） =====
-// ① 法律ごとにJSONを分離
-// ② lawCode + articleNumber で検索
-// ③ 将来：複数法律横断検索可能
-//
-// JSON構造：
-// {
-//   "lawName": "国民健康保険法",
-//   "articles": {
-//      "1": "第1条 ...",
-//      "75-7": "第75条の7 ..."
-//   }
-// }
+// ===== 設計方針 =====
+// ・pdf.js 不使用（環境依存回避）
+// ・ブラウザ標準PDF Viewer 使用
+// ・#page= でページジャンプ制御
 
-export default function MultiLawArticleTool() {
+export default function KokuhouLawViewer() {
 
-  const [rawText, setRawText] = useState("");
-  const [lawName, setLawName] = useState("");
-  const [lawDb, setLawDb] = useState({});
-  const [searchLaw, setSearchLaw] = useState("");
-  const [searchArticle, setSearchArticle] = useState("");
-  const [searchResult, setSearchResult] = useState("");
   const [pdfUrl, setPdfUrl] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState(null);
 
-  // ===== PDF表示 =====
-  const handlePdf = (file) => {
+  const [jumpPage, setJumpPage] = useState("");
+  const [rightPdfUrl, setRightPdfUrl] = useState(null);
+
+  // ===== PDF読み込み =====
+  const handleFile = async (file) => {
     if (!file) return;
-    if (file.type !== "application/pdf") {
-      alert("PDFを選択してください");
-      return;
-    }
-    setPdfUrl(URL.createObjectURL(file));
-  };
 
-  // ===== 条文抽出 =====
-  const parseArticles = () => {
-    if (!rawText || !lawName) {
-      alert("法律名とテキストを入力してください");
-      return;
-    }
+    try {
+      setError(null);
 
-    const regex = /第[一二三四五六七八九十百千0-9]+条[\s\S]*?(?=第[一二三四五六七八九十百千0-9]+条|$)/g;
-    const matches = rawText.match(regex) || [];
-
-    const articles = {};
-
-    matches.forEach(article => {
-      const numMatch = article.match(/第([一二三四五六七八九十百千0-9]+)条/);
-      if (!numMatch) return;
-
-      const key = convertKansuji(numMatch[1]).toString();
-      articles[key] = article.trim();
-    });
-
-    const newLawDb = {
-      ...lawDb,
-      [lawName]: {
-        lawName,
-        articles
+      if (file.type !== "application/pdf") {
+        throw new Error("PDFファイルを選択してください");
       }
-    };
 
-    setLawDb(newLawDb);
-    alert(lawName + "：" + Object.keys(articles).length + "条 抽出");
-  };
+      const url = URL.createObjectURL(file);
 
-  // ===== 漢数字変換 =====
-  const convertKansuji = (str) => {
-    const map = {
-      "一":1,"二":2,"三":3,"四":4,"五":5,
-      "六":6,"七":7,"八":8,"九":9,"十":10
-    };
+      setPdfUrl(url);
+      setRightPdfUrl(url);
+      setFileName(file.name);
 
-    if (/^\d+$/.test(str)) return Number(str);
-
-    if (str.length === 1) return map[str] || str;
-
-    if (str.includes("十")) {
-      const [l,r] = str.split("十");
-      return (l ? map[l] : 1) * 10 + (r ? map[r] : 0);
+    } catch (e) {
+      console.error("PDF LOAD ERROR:", e);
+      setError(e?.message || "PDF読み込みエラー");
     }
-
-    return str;
   };
 
-  // ===== JSON保存 =====
-  const downloadJson = () => {
-    const blob = new Blob([
-      JSON.stringify(lawDb, null, 2)
-    ], { type:"application/json" });
+  // ===== 条文ジャンプ =====
+  const handleJump = () => {
+    if (!pdfUrl) return;
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "laws_db.json";
-    a.click();
-  };
+    const page = Number(jumpPage);
 
-  // ===== JSON読込 =====
-  const loadJson = async (file) => {
-    if (!file) return;
-    const json = JSON.parse(await file.text());
-    setLawDb(json);
-  };
-
-  // ===== 検索 =====
-  const search = () => {
-    const law = lawDb[searchLaw];
-    if (!law) {
-      setSearchResult("法律未登録");
+    if (!page || page <= 0) {
+      setError("正しいページ番号を入力してください");
       return;
     }
 
-    setSearchResult(
-      law.articles[searchArticle] || "条文未登録"
-    );
+    setError(null);
+    setRightPdfUrl(`${pdfUrl}#page=${page}`);
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-gray-100">
 
-      {/* PDF */}
-      <div className="w-1/2 border-r">
-        {pdfUrl
-          ? <iframe src={pdfUrl} className="w-full h-full" />
-          : <div className="p-6">PDFを読み込むと表示</div>
-        }
+      {/* ===== 左ペイン：全文固定 ===== */}
+      <div className="w-1/2 bg-white border-r flex flex-col">
+
+        <div className="p-4 border-b font-bold text-lg">
+          全文表示
+        </div>
+
+        <div className="flex-1 bg-gray-200">
+          {pdfUrl ? (
+            <iframe
+              src={pdfUrl}
+              title="Full PDF Viewer"
+              className="w-full h-full"
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center text-gray-600">
+              PDFを選択してください
+            </div>
+          )}
+        </div>
+
       </div>
 
-      {/* 操作 */}
+      {/* ===== 右ペイン：条文ジャンプ ===== */}
       <div className="w-1/2 flex flex-col">
 
-        <div className="p-3 border-b space-y-3">
+        <div className="p-3 bg-white border-b flex gap-3 items-center">
 
-          <div>
-            <div className="font-bold">① PDF表示</div>
-            <input type="file" accept="application/pdf"
-              onChange={e=>handlePdf(e.target.files[0])} />
-          </div>
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => handleFile(e.target.files[0])}
+          />
 
-          <div>
-            <div className="font-bold">② 法律 → 条文抽出</div>
-            <input
-              className="border p-1 w-full"
-              placeholder="法律名（例：国民健康保険法）"
-              value={lawName}
-              onChange={e=>setLawName(e.target.value)}
-            />
+          <input
+            type="number"
+            placeholder="ページ番号"
+            value={jumpPage}
+            onChange={(e) => setJumpPage(e.target.value)}
+            className="border px-2 py-1 rounded w-32"
+          />
 
-            <textarea
-              className="w-full border p-2 h-32 mt-2"
-              placeholder="PDF全文コピー貼付"
-              value={rawText}
-              onChange={e=>setRawText(e.target.value)}
-            />
+          <button
+            onClick={handleJump}
+            className="bg-blue-600 text-white px-3 py-1 rounded"
+          >
+            ジャンプ
+          </button>
 
-            <button className="mt-2 px-3 py-1 bg-blue-600 text-white"
-              onClick={parseArticles}>
-              条文抽出
-            </button>
+          {fileName && (
+            <span className="text-sm text-gray-600 truncate max-w-xs">
+              {fileName}
+            </span>
+          )}
 
-            <button className="mt-2 ml-2 px-3 py-1 bg-green-600 text-white"
-              onClick={downloadJson}>
-              JSON保存
-            </button>
-          </div>
-
-          <div>
-            <div className="font-bold">③ JSON読込</div>
-            <input type="file" accept="application/json"
-              onChange={e=>loadJson(e.target.files[0])} />
-          </div>
-
-          <div>
-            <div className="font-bold">④ 検索</div>
-            <input
-              className="border p-1 mr-2"
-              placeholder="法律名"
-              value={searchLaw}
-              onChange={e=>setSearchLaw(e.target.value)}
-            />
-            <input
-              className="border p-1 mr-2"
-              placeholder="条番号（例：75）"
-              value={searchArticle}
-              onChange={e=>setSearchArticle(e.target.value)}
-            />
-            <button className="px-3 py-1 bg-black text-white"
-              onClick={search}>
-              検索
-            </button>
-          </div>
+          {error && <span className="text-red-500 text-sm">{error}</span>}
 
         </div>
 
-        <textarea className="flex-1 p-3" value={searchResult} readOnly />
+        <div className="flex-1 bg-gray-300">
+          {rightPdfUrl ? (
+            <iframe
+              src={rightPdfUrl}
+              title="Jump PDF Viewer"
+              className="w-full h-full"
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center text-gray-600">
+              ページジャンプ先がここに表示されます
+            </div>
+          )}
+        </div>
 
       </div>
 
@@ -205,12 +136,15 @@ export default function MultiLawArticleTool() {
   );
 }
 
+// ===== 今後拡張しやすいポイント =====
+// ・法律切替セレクタ追加可能
+// ・条文JSON検索追加可能
+// ・ブックマーク保存追加可能
+// ・iPad UI最適化対応可能
+
 // ===== テストケース =====
-// 1. PDF表示 → iframe表示
-// 2. 法律A 抽出 → DB格納
-// 3. 法律B 抽出 → DB追加
-// 4. JSON保存 → laws_db.json DL
-// 5. JSON読込 → DB復元
-// 6. 法律A + 条番号 → 正常表示
-// 7. 未登録法律 → 法律未登録
-// 8. 未登録条文 → 条文未登録
+// 1. PDF読込 → 左に全文表示
+// 2. ページ番号入力 → 右に該当ページ表示
+// 3. 不正ページ → エラー表示
+// 4. PDF再読込 → 両ペイン更新
+// 5. 連続ジャンプ → 正常表示
