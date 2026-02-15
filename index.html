@@ -1,1 +1,95 @@
-HELLO OK
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>国保法PDFビューア</title>
+
+<style>
+body{
+  margin:0;
+  font-family:sans-serif;
+}
+
+.container{
+  display:flex;
+  height:100vh;
+}
+
+.left{
+  width:260px;
+  border-right:1px solid #ccc;
+  padding:15px;
+  background:#fafafa;
+}
+
+.right{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+.topbar{
+  padding:10px;
+  border-bottom:1px solid #ccc;
+  background:#fff;
+}
+
+.viewer{
+  flex:1;
+}
+
+iframe{
+  width:100%;
+  height:100%;
+  border:none;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="left">
+    <h2>条文ビュー</h2>
+    <p>PDFを選択すると右に表示されます</p>
+    <div id="filename"></div>
+  </div>
+
+  <div class="right">
+
+    <div class="topbar">
+      <input type="file" accept="application/pdf" onchange="loadPDF(event)">
+    </div>
+
+    <div class="viewer">
+      <iframe id="pdfFrame"></iframe>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+
+function loadPDF(e){
+
+  const file = e.target.files[0];
+  if(!file) return;
+
+  if(file.type !== "application/pdf"){
+    alert("PDFを選択してください");
+    return;
+  }
+
+  const url = URL.createObjectURL(file);
+
+  document.getElementById("pdfFrame").src = url;
+  document.getElementById("filename").innerText = file.name;
+}
+
+</script>
+
+</body>
+</html>
