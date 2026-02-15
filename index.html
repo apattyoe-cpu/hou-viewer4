@@ -65,9 +65,9 @@
       cursor: pointer;
     }
 
-    input[type="number"] {
+    input[type="number"], input[type="text"] {
       padding: 4px;
-      width: 80px;
+      width: 120px;
     }
   </style>
 </head>
@@ -79,9 +79,9 @@
 
   <span id="fileName" style="font-size:14px;color:#555"></span>
 
-  <span>ページジャンプ:</span>
-  <input type="number" id="pageInput" placeholder="例: 41" />
-  <button onclick="jumpPage()">ジャンプ</button>
+  <span>条番号ジャンプ:</span>
+  <input type="text" id="articleInput" placeholder="例: 11" />
+  <button onclick="jumpArticle()">条文ジャンプ</button>
 
   <span id="error" style="color:red;font-size:14px"></span>
 </div>
@@ -101,6 +101,18 @@
 
 <script>
 let pdfUrl = null;
+
+// ===== 仮：条番号 → ページ対応表 =====
+// ※ ここを将来自動生成 or JSON化可能
+const articlePageMap = {
+  "1": 1,
+  "2": 2,
+  "3": 3,
+  "4": 5,
+  "5": 7,
+  "10": 20,
+  "11": 41
+};
 
 const fileInput = document.getElementById("fileInput");
 const fileNameLabel = document.getElementById("fileName");
@@ -135,13 +147,15 @@ fileInput.addEventListener("change", e => {
   }
 });
 
-function jumpPage() {
+function jumpArticle() {
   if (!pdfUrl) return;
 
-  const page = Number(document.getElementById("pageInput").value);
+  const article = document.getElementById("articleInput").value.trim();
 
-  if (!page || page <= 0) {
-    errorLabel.textContent = "正しいページ番号を入力してください";
+  const targetPage = articlePageMap[article];
+
+  if (!targetPage) {
+    errorLabel.textContent = "対応ページ未登録の条番号です";
     return;
   }
 
@@ -149,7 +163,7 @@ function jumpPage() {
 
   rightPdf.src = "";
   setTimeout(() => {
-    rightPdf.src = pdfUrl + "#page=" + page;
+    rightPdf.src = pdfUrl + "#page=" + targetPage;
   }, 50);
 }
 
@@ -173,3 +187,10 @@ function startFakeProgress() {
 
 </body>
 </html>
+
+// ===== テストケース =====
+// 1. PDF読込 → 左右にPDF表示
+// 2. 条番号入力 → 右のみジャンプ
+// 3. 未登録条番号 → エラー表示
+// 4. PDF未読込 → 何も起きない
+// 5. 連続読込 → 正常切替
