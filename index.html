@@ -2,8 +2,11 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>法律 条番号対応 ハイブリッド生成ツール</title>
+  <title>法律 条番号対応 ハイブリッド生成ツール（実抽出版）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- pdf.js CDN（安定版固定） -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 
   <style>
     body {
@@ -63,7 +66,7 @@
 
 <body>
 
-<h1>条番号 → ページ ハイブリッド生成ツール</h1>
+<h1>条番号 → ページ ハイブリッド生成ツール（実抽出版）</h1>
 
 <div class="card">
   <h3>① PDF読み込み（条文候補を自動抽出）</h3>
@@ -111,48 +114,53 @@ let finalMap = {};
 const candidateTable = document.getElementById("candidateTable");
 const finalTable = document.getElementById("finalTable");
 
-// ===== PDF疑似解析（将来：本物解析に置換） =====
-document.getElementById("pdfInput").addEventListener("change", e => {
+// ===== PDF解析（実処理） =====
+document.getElementById("pdfInput").addEventListener("change", async e => {
   const file = e.target.files[0];
   if (!file) return;
 
-  startFakeAnalysis();
+  const arrayBuffer = await file.arrayBuffer();
+  await extractArticles(arrayBuffer);
 });
 
-function startFakeAnalysis() {
+async function extractArticles(buffer) {
   const progressBox = document.getElementById("progress");
   const progressNum = document.getElementById("progressNum");
 
   progressBox.style.display = "block";
+  candidates = {};
 
-  let p = 0;
-  const timer = setInterval(() => {
-    p += 10;
-    progressNum.textContent = p;
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const total = pdf.numPages;
 
-    if (p >= 100) {
-      clearInterval(timer);
-      progressBox.style.display = "none";
-      generateFakeCandidates();
+  for (let pageNum = 1; pageNum <= total; pageNum++) {
+
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+
+    const text = textContent.items.map(i => i.str).join(" ");
+
+    // 条文検出（第○条）
+    const matches = text.match(/第\s*([0-9一二三四五六七八九十百千]+)\s*条/g);
+
+    if (matches) {
+      matches.forEach(m => {
+        const num = m.replace(/[^0-9]/g, "");
+        if (num && !candidates[num]) {
+          candidates[num] = pageNum;
+        }
+      });
     }
-  }, 150);
-}
 
-// ===== 仮：条文候補生成 =====
-function generateFakeCandidates() {
-  candidates = {
-    "1": 1,
-    "2": 2,
-    "3": 3,
-    "10": 20,
-    "11": 41,
-    "20": 65
-  };
+    const percent = Math.floor((pageNum / total) * 100);
+    progressNum.textContent = percent;
+  }
 
+  progressBox.style.display = "none";
   renderCandidateTable();
 }
 
-// ===== 候補表描画 =====
+// ===== 候補表 =====
 function renderCandidateTable() {
   candidateTable.innerHTML = "";
 
@@ -162,9 +170,7 @@ function renderCandidateTable() {
     tr.innerHTML = `
       <td>${key}</td>
       <td><input value="${candidates[key]}" onchange="updateCandidate('${key}', this.value)" /></td>
-      <td>
-        <button class="ok" onclick="approve('${key}')">確定</button>
-      </td>
+      <td><button class="ok" onclick="approve('${key}')">確定</button></td>
     `;
 
     candidateTable.appendChild(tr);
@@ -178,12 +184,11 @@ function updateCandidate(key, val) {
 function approve(key) {
   finalMap[key] = candidates[key];
   delete candidates[key];
-
   renderCandidateTable();
   renderFinalTable();
 }
 
-// ===== 確定表描画 =====
+// ===== 確定表 =====
 function renderFinalTable() {
   finalTable.innerHTML = "";
 
@@ -222,9 +227,3 @@ function downloadJson() {
 
 </body>
 </html>
-
-// ===== テストケース =====
-// 1. PDF選択 → 候補生成される
-// 2. 候補修正 → 数値更新
-// 3. 確定 → 下テーブル移動
-// 4. JSON保存 → 正常DL
