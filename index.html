@@ -70,6 +70,11 @@
       color: red;
       font-size: 14px;
     }
+
+    .ok {
+      color: green;
+      font-size: 14px;
+    }
   </style>
 </head>
 
@@ -94,7 +99,7 @@
 
         <button onclick="jumpArticle()">条文ジャンプ</button>
 
-        <span id="error" class="error"></span>
+        <span id="status" class="error"></span>
       </div>
 
       <iframe id="rightViewer"></iframe>
@@ -109,11 +114,9 @@ const fileInput = document.getElementById("fileInput");
 const articleInput = document.getElementById("articleInput");
 const leftViewer = document.getElementById("leftViewer");
 const rightViewer = document.getElementById("rightViewer");
-const errorSpan = document.getElementById("error");
+const statusSpan = document.getElementById("status");
 
 // ===== 条番号 → PDFページ対応表（仮） =====
-// ※ 実務ではここをJSON化 or 自動生成
-// ※ 今は例として一部のみ
 const articleToPage = {
   1: 1,
   2: 1,
@@ -150,7 +153,8 @@ fileInput.addEventListener("change", () => {
   if (!file) return;
 
   try {
-    errorSpan.textContent = "";
+    statusSpan.className = "error";
+    statusSpan.textContent = "";
 
     if (file.type !== "application/pdf") {
       throw new Error("PDFファイルを選択してください");
@@ -161,32 +165,49 @@ fileInput.addEventListener("change", () => {
     leftViewer.src = pdfUrl;
     rightViewer.src = pdfUrl + "#page=1";
 
+    statusSpan.className = "ok";
+    statusSpan.textContent = "PDF読込OK";
+
   } catch (e) {
     console.error("PDF LOAD ERROR:", e);
-    errorSpan.textContent = e.message || "PDF読み込みエラー";
+    statusSpan.className = "error";
+    statusSpan.textContent = e.message || "PDF読み込みエラー";
   }
 });
 
-// ===== 条文ジャンプ =====
+// ===== 条文ジャンプ（強制再読み込み付き） =====
 function jumpArticle() {
-  if (!pdfUrl) return;
+  if (!pdfUrl) {
+    statusSpan.className = "error";
+    statusSpan.textContent = "先にPDFを読み込んでください";
+    return;
+  }
 
   const article = Number(articleInput.value);
 
   if (!article || article <= 0) {
-    errorSpan.textContent = "正しい条番号を入力してください";
+    statusSpan.className = "error";
+    statusSpan.textContent = "正しい条番号を入力してください";
     return;
   }
 
   const page = articleToPage[article];
 
   if (!page) {
-    errorSpan.textContent = "未登録の条番号です（対応表に未登録）";
+    statusSpan.className = "error";
+    statusSpan.textContent = "未登録の条番号です";
     return;
   }
 
-  errorSpan.textContent = "";
-  rightViewer.src = pdfUrl + "#page=" + page;
+  // ★ iframe更新が効かないブラウザ対策
+  rightViewer.src = "";
+
+  setTimeout(() => {
+    rightViewer.src = pdfUrl + "#page=" + page;
+  }, 50);
+
+  statusSpan.className = "ok";
+  statusSpan.textContent = `第${article}条 → p.${page}`;
 }
 
 </script>
@@ -198,20 +219,18 @@ function jumpArticle() {
 ===== テストケース =====
 
 ■ PDF表示
-1. 正常PDF → 左全文表示・右1ページ目表示
-2. PDF以外 → エラー表示
+1. PDF → 左全文 / 右1ページ目
+2. PDF以外 → エラー
 
 ■ 条文ジャンプ
-3. 登録済条番号 → 該当ページジャンプ
-4. 未登録条番号 → エラー表示
-5. 空入力 → エラー表示
-6. 0以下 → エラー表示
+3. 登録条 → 右ジャンプ
+4. 未登録 → エラー
+5. 未読込 → エラー
 
-■ 実機
-7. iPad Safari → 表示可
-8. GitHub Pages → 表示可
+■ ブラウザ
+6. iPad Safari → 動作
+7. Chrome → 動作
 
-■ 将来拡張
-9. articleToPage → JSON外部化
-10. PDF自動解析 → 自動生成
+■ iframe再読み込み
+8. 同じ条 → 再ジャンプ可能
 -->
