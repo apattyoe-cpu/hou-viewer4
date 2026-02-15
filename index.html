@@ -2,52 +2,19 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>国保法 条文ビュー</title>
+<title>条文自動抽出ビュー</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 
 <style>
-body{
-  margin:0;
-  font-family:sans-serif;
-}
-
-.container{
-  display:flex;
-  height:100vh;
-}
-
-.left{
-  width:50%;
-  border-right:1px solid #ccc;
-}
-
-.right{
-  width:50%;
-  display:flex;
-  flex-direction:column;
-}
-
-.topbar{
-  padding:10px;
-  border-bottom:1px solid #ccc;
-}
-
-.viewer{
-  flex:1;
-}
-
-iframe{
-  width:100%;
-  height:100%;
-  border:none;
-}
-
-textarea{
-  width:100%;
-  height:100%;
-  border:none;
-  padding:15px;
-  font-size:16px;
-}
+body{margin:0;font-family:sans-serif;}
+.container{display:flex;height:100vh;}
+.left{width:50%;border-right:1px solid #ccc;}
+.right{width:50%;display:flex;flex-direction:column;}
+.topbar{padding:10px;border-bottom:1px solid #ccc;}
+.viewer{flex:1;}
+iframe{width:100%;height:100%;border:none;}
+textarea{width:100%;height:100%;border:none;padding:10px;}
 </style>
 
 </head>
@@ -56,57 +23,65 @@ textarea{
 
 <div class="container">
 
-  <!-- 左：PDF全文 -->
-  <div class="left">
-    <iframe id="pdfFrame"></iframe>
-  </div>
+<div class="left">
+<iframe id="pdfFrame"></iframe>
+</div>
 
-  <!-- 右：条文表示 -->
-  <div class="right">
+<div class="right">
 
-    <div class="topbar">
-      <input type="file" accept="application/pdf" onchange="loadPDF(event)">
-      <button onclick="showArticle('75-7')">第75条の7</button>
-      <button onclick="showArticle('82-2')">第82条の2</button>
-    </div>
+<div class="topbar">
+<input type="file" accept="application/pdf" onchange="loadPDF(event)">
+<input placeholder="例：第75条の7" id="searchBox">
+<button onclick="searchArticle()">抽出</button>
+</div>
 
-    <div class="viewer">
-      <textarea id="articleBox"></textarea>
-    </div>
+<div class="viewer">
+<textarea id="result"></textarea>
+</div>
 
-  </div>
+</div>
 
 </div>
 
 <script>
 
-function loadPDF(e){
-  const file = e.target.files[0];
-  if(!file) return;
+let fullText = "";
 
-  const url = URL.createObjectURL(file);
-  document.getElementById("pdfFrame").src = url;
+async function loadPDF(e){
+
+const file = e.target.files[0];
+if(!file) return;
+
+const url = URL.createObjectURL(file);
+document.getElementById("pdfFrame").src = url;
+
+const arrayBuffer = await file.arrayBuffer();
+const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+
+let text = "";
+
+for(let i=1;i<=pdf.numPages;i++){
+const page = await pdf.getPage(i);
+const content = await page.getTextContent();
+text += content.items.map(s=>s.str).join(" ") + "\n";
 }
 
-const articles = {
+fullText = text;
+alert("PDF解析完了");
 
-"75-7": `
-第七十五条の七
-国民健康保険事業費納付金は…
-（ここに条文テキストを入れる）
-`,
+}
 
-"82-2": `
-第八十二条の二
-都道府県国民健康保険運営方針は…
-（ここに条文テキスト）
-`
+function searchArticle(){
 
-};
+const key = document.getElementById("searchBox").value.trim();
+if(!key) return;
 
-function showArticle(key){
-  document.getElementById("articleBox").value =
-    articles[key] || "条文未登録";
+const regex = new RegExp(key + "[\\s\\S]*?(第[一二三四五六七八九十百]+条|$)");
+const match = fullText.match(regex);
+
+document.getElementById("result").value =
+match ? match[0] : "見つかりません";
+
 }
 
 </script>
