@@ -1,68 +1,216 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>条文DB検索ビュー</title>
+// 法律横断 条文ツール（複数法律対応 / PDF → 条文JSON生成 + ビューア統合版）
 
-<style>
-body{margin:0;font-family:sans-serif;}
-.container{display:flex;height:100vh;}
-.left{width:50%;border-right:1px solid #ccc;}
-.right{width:50%;display:flex;flex-direction:column;}
-.topbar{padding:10px;border-bottom:1px solid #ccc;}
-.viewer{flex:1;}
-iframe{width:100%;height:100%;border:none;}
-textarea{width:100%;height:100%;border:none;padding:10px;font-size:16px;}
-</style>
+import React, { useState } from "react";
 
-</head>
+// ===== 設計（複数法律対応） =====
+// ① 法律ごとにJSONを分離
+// ② lawCode + articleNumber で検索
+// ③ 将来：複数法律横断検索可能
+//
+// JSON構造：
+// {
+//   "lawName": "国民健康保険法",
+//   "articles": {
+//      "1": "第1条 ...",
+//      "75-7": "第75条の7 ..."
+//   }
+// }
 
-<body>
+export default function MultiLawArticleTool() {
 
-<div class="container">
+  const [rawText, setRawText] = useState("");
+  const [lawName, setLawName] = useState("");
+  const [lawDb, setLawDb] = useState({});
+  const [searchLaw, setSearchLaw] = useState("");
+  const [searchArticle, setSearchArticle] = useState("");
+  const [searchResult, setSearchResult] = useState("");
+  const [pdfUrl, setPdfUrl] = useState(null);
 
-<div class="left">
-<iframe id="pdfFrame"></iframe>
-</div>
+  // ===== PDF表示 =====
+  const handlePdf = (file) => {
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      alert("PDFを選択してください");
+      return;
+    }
+    setPdfUrl(URL.createObjectURL(file));
+  };
 
-<div class="right">
+  // ===== 条文抽出 =====
+  const parseArticles = () => {
+    if (!rawText || !lawName) {
+      alert("法律名とテキストを入力してください");
+      return;
+    }
 
-<div class="topbar">
-<input type="file" accept="application/pdf" onchange="loadPDF(event)">
-<input id="key" placeholder="例：75-7">
-<button onclick="search()">検索</button>
-</div>
+    const regex = /第[一二三四五六七八九十百千0-9]+条[\s\S]*?(?=第[一二三四五六七八九十百千0-9]+条|$)/g;
+    const matches = rawText.match(regex) || [];
 
-<div class="viewer">
-<textarea id="result"></textarea>
-</div>
+    const articles = {};
 
-</div>
+    matches.forEach(article => {
+      const numMatch = article.match(/第([一二三四五六七八九十百千0-9]+)条/);
+      if (!numMatch) return;
 
-</div>
+      const key = convertKansuji(numMatch[1]).toString();
+      articles[key] = article.trim();
+    });
 
-<script>
+    const newLawDb = {
+      ...lawDb,
+      [lawName]: {
+        lawName,
+        articles
+      }
+    };
 
-let articles = {};
+    setLawDb(newLawDb);
+    alert(lawName + "：" + Object.keys(articles).length + "条 抽出");
+  };
 
-fetch("articles.json")
-.then(r=>r.json())
-.then(d=>articles=d);
+  // ===== 漢数字変換 =====
+  const convertKansuji = (str) => {
+    const map = {
+      "一":1,"二":2,"三":3,"四":4,"五":5,
+      "六":6,"七":7,"八":8,"九":9,"十":10
+    };
 
-function loadPDF(e){
-const file=e.target.files[0];
-if(!file) return;
-const url=URL.createObjectURL(file);
-document.getElementById("pdfFrame").src=url;
+    if (/^\d+$/.test(str)) return Number(str);
+
+    if (str.length === 1) return map[str] || str;
+
+    if (str.includes("十")) {
+      const [l,r] = str.split("十");
+      return (l ? map[l] : 1) * 10 + (r ? map[r] : 0);
+    }
+
+    return str;
+  };
+
+  // ===== JSON保存 =====
+  const downloadJson = () => {
+    const blob = new Blob([
+      JSON.stringify(lawDb, null, 2)
+    ], { type:"application/json" });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "laws_db.json";
+    a.click();
+  };
+
+  // ===== JSON読込 =====
+  const loadJson = async (file) => {
+    if (!file) return;
+    const json = JSON.parse(await file.text());
+    setLawDb(json);
+  };
+
+  // ===== 検索 =====
+  const search = () => {
+    const law = lawDb[searchLaw];
+    if (!law) {
+      setSearchResult("法律未登録");
+      return;
+    }
+
+    setSearchResult(
+      law.articles[searchArticle] || "条文未登録"
+    );
+  };
+
+  return (
+    <div className="flex h-screen">
+
+      {/* PDF */}
+      <div className="w-1/2 border-r">
+        {pdfUrl
+          ? <iframe src={pdfUrl} className="w-full h-full" />
+          : <div className="p-6">PDFを読み込むと表示</div>
+        }
+      </div>
+
+      {/* 操作 */}
+      <div className="w-1/2 flex flex-col">
+
+        <div className="p-3 border-b space-y-3">
+
+          <div>
+            <div className="font-bold">① PDF表示</div>
+            <input type="file" accept="application/pdf"
+              onChange={e=>handlePdf(e.target.files[0])} />
+          </div>
+
+          <div>
+            <div className="font-bold">② 法律 → 条文抽出</div>
+            <input
+              className="border p-1 w-full"
+              placeholder="法律名（例：国民健康保険法）"
+              value={lawName}
+              onChange={e=>setLawName(e.target.value)}
+            />
+
+            <textarea
+              className="w-full border p-2 h-32 mt-2"
+              placeholder="PDF全文コピー貼付"
+              value={rawText}
+              onChange={e=>setRawText(e.target.value)}
+            />
+
+            <button className="mt-2 px-3 py-1 bg-blue-600 text-white"
+              onClick={parseArticles}>
+              条文抽出
+            </button>
+
+            <button className="mt-2 ml-2 px-3 py-1 bg-green-600 text-white"
+              onClick={downloadJson}>
+              JSON保存
+            </button>
+          </div>
+
+          <div>
+            <div className="font-bold">③ JSON読込</div>
+            <input type="file" accept="application/json"
+              onChange={e=>loadJson(e.target.files[0])} />
+          </div>
+
+          <div>
+            <div className="font-bold">④ 検索</div>
+            <input
+              className="border p-1 mr-2"
+              placeholder="法律名"
+              value={searchLaw}
+              onChange={e=>setSearchLaw(e.target.value)}
+            />
+            <input
+              className="border p-1 mr-2"
+              placeholder="条番号（例：75）"
+              value={searchArticle}
+              onChange={e=>setSearchArticle(e.target.value)}
+            />
+            <button className="px-3 py-1 bg-black text-white"
+              onClick={search}>
+              検索
+            </button>
+          </div>
+
+        </div>
+
+        <textarea className="flex-1 p-3" value={searchResult} readOnly />
+
+      </div>
+
+    </div>
+  );
 }
 
-function search(){
-const key=document.getElementById("key").value;
-document.getElementById("result").value =
-articles[key] || "未登録";
-}
-
-</script>
-
-</body>
-</html>
+// ===== テストケース =====
+// 1. PDF表示 → iframe表示
+// 2. 法律A 抽出 → DB格納
+// 3. 法律B 抽出 → DB追加
+// 4. JSON保存 → laws_db.json DL
+// 5. JSON読込 → DB復元
+// 6. 法律A + 条番号 → 正常表示
+// 7. 未登録法律 → 法律未登録
+// 8. 未登録条文 → 条文未登録
