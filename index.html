@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>国保法PDFビューア</title>
+<title>国保法 条文ビュー</title>
 
 <style>
 body{
@@ -16,14 +16,12 @@ body{
 }
 
 .left{
-  width:260px;
+  width:50%;
   border-right:1px solid #ccc;
-  padding:15px;
-  background:#fafafa;
 }
 
 .right{
-  flex:1;
+  width:50%;
   display:flex;
   flex-direction:column;
 }
@@ -31,7 +29,6 @@ body{
 .topbar{
   padding:10px;
   border-bottom:1px solid #ccc;
-  background:#fff;
 }
 
 .viewer{
@@ -43,6 +40,14 @@ iframe{
   height:100%;
   border:none;
 }
+
+textarea{
+  width:100%;
+  height:100%;
+  border:none;
+  padding:15px;
+  font-size:16px;
+}
 </style>
 
 </head>
@@ -51,20 +56,22 @@ iframe{
 
 <div class="container">
 
+  <!-- 左：PDF全文 -->
   <div class="left">
-    <h2>条文ビュー</h2>
-    <p>PDFを選択すると右に表示されます</p>
-    <div id="filename"></div>
+    <iframe id="pdfFrame"></iframe>
   </div>
 
+  <!-- 右：条文表示 -->
   <div class="right">
 
     <div class="topbar">
       <input type="file" accept="application/pdf" onchange="loadPDF(event)">
+      <button onclick="showArticle('75-7')">第75条の7</button>
+      <button onclick="showArticle('82-2')">第82条の2</button>
     </div>
 
     <div class="viewer">
-      <iframe id="pdfFrame"></iframe>
+      <textarea id="articleBox"></textarea>
     </div>
 
   </div>
@@ -74,19 +81,32 @@ iframe{
 <script>
 
 function loadPDF(e){
-
   const file = e.target.files[0];
   if(!file) return;
 
-  if(file.type !== "application/pdf"){
-    alert("PDFを選択してください");
-    return;
-  }
-
   const url = URL.createObjectURL(file);
-
   document.getElementById("pdfFrame").src = url;
-  document.getElementById("filename").innerText = file.name;
+}
+
+const articles = {
+
+"75-7": `
+第七十五条の七
+国民健康保険事業費納付金は…
+（ここに条文テキストを入れる）
+`,
+
+"82-2": `
+第八十二条の二
+都道府県国民健康保険運営方針は…
+（ここに条文テキスト）
+`
+
+};
+
+function showArticle(key){
+  document.getElementById("articleBox").value =
+    articles[key] || "条文未登録";
 }
 
 </script>
