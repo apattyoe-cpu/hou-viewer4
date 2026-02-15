@@ -2,9 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>条文自動抽出ビュー</title>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<title>条文DB検索ビュー</title>
 
 <style>
 body{margin:0;font-family:sans-serif;}
@@ -14,7 +12,7 @@ body{margin:0;font-family:sans-serif;}
 .topbar{padding:10px;border-bottom:1px solid #ccc;}
 .viewer{flex:1;}
 iframe{width:100%;height:100%;border:none;}
-textarea{width:100%;height:100%;border:none;padding:10px;}
+textarea{width:100%;height:100%;border:none;padding:10px;font-size:16px;}
 </style>
 
 </head>
@@ -31,8 +29,8 @@ textarea{width:100%;height:100%;border:none;padding:10px;}
 
 <div class="topbar">
 <input type="file" accept="application/pdf" onchange="loadPDF(event)">
-<input placeholder="例：第75条の7" id="searchBox">
-<button onclick="searchArticle()">抽出</button>
+<input id="key" placeholder="例：75-7">
+<button onclick="search()">検索</button>
 </div>
 
 <div class="viewer">
@@ -45,43 +43,23 @@ textarea{width:100%;height:100%;border:none;padding:10px;}
 
 <script>
 
-let fullText = "";
+let articles = {};
 
-async function loadPDF(e){
+fetch("articles.json")
+.then(r=>r.json())
+.then(d=>articles=d);
 
-const file = e.target.files[0];
+function loadPDF(e){
+const file=e.target.files[0];
 if(!file) return;
-
-const url = URL.createObjectURL(file);
-document.getElementById("pdfFrame").src = url;
-
-const arrayBuffer = await file.arrayBuffer();
-const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-
-let text = "";
-
-for(let i=1;i<=pdf.numPages;i++){
-const page = await pdf.getPage(i);
-const content = await page.getTextContent();
-text += content.items.map(s=>s.str).join(" ") + "\n";
+const url=URL.createObjectURL(file);
+document.getElementById("pdfFrame").src=url;
 }
 
-fullText = text;
-alert("PDF解析完了");
-
-}
-
-function searchArticle(){
-
-const key = document.getElementById("searchBox").value.trim();
-if(!key) return;
-
-const regex = new RegExp(key + "[\\s\\S]*?(第[一二三四五六七八九十百]+条|$)");
-const match = fullText.match(regex);
-
+function search(){
+const key=document.getElementById("key").value;
 document.getElementById("result").value =
-match ? match[0] : "見つかりません";
-
+articles[key] || "未登録";
 }
 
 </script>
