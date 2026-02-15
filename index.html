@@ -1,22 +1,21 @@
-// 国保法 条文ビューア（左：全文固定 / 右：条文ジャンプ対応 / PDF解析進捗可視化）
+// 国保法 条文ビューア（左：全文固定 / 右：条文ジャンプ対応 / 複数法律拡張前提）
+
+import React, { useState, useEffect } from "react";
+
 // ===== 設計方針 =====
 // ・pdf.js 不使用（環境依存回避）
 // ・ブラウザ標準PDF Viewer 使用
+// ・Safari / iPad 互換のため iframe + embed フォールバック
 // ・#page= でページジャンプ制御
-// ・将来：複数法律対応可能な構造
 
-import React, { useState } from "react";
+export default function KokuhouLawViewer() {
 
-export default function LawViewer() {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState(null);
   const [jumpPage, setJumpPage] = useState("");
   const [rightPdfUrl, setRightPdfUrl] = useState(null);
-
-  // 自動生成進捗（疑似：将来PDF解析に置換）
-  const [progress, setProgress] = useState(0);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [viewerKey, setViewerKey] = useState(0); // ← 再描画強制
 
   // ===== PDF読み込み =====
   const handleFile = async (file) => {
@@ -30,23 +29,11 @@ export default function LawViewer() {
       }
 
       const url = URL.createObjectURL(file);
+
       setPdfUrl(url);
       setRightPdfUrl(url);
       setFileName(file.name);
-
-      // 疑似：自動対応表生成進捗表示
-      setIsGenerating(true);
-      setProgress(0);
-
-      let p = 0;
-      const timer = setInterval(() => {
-        p += 10;
-        setProgress(p);
-        if (p >= 100) {
-          clearInterval(timer);
-          setIsGenerating(false);
-        }
-      }, 200);
+      setViewerKey(k => k + 1); // ← Viewer強制更新
 
     } catch (e) {
       console.error("PDF LOAD ERROR:", e);
@@ -67,104 +54,120 @@ export default function LawViewer() {
 
     setError(null);
 
-    // iframe 再描画を強制
-    const newUrl = `${pdfUrl}#page=${page}`;
-    setRightPdfUrl(null);
-
-    setTimeout(() => {
-      setRightPdfUrl(newUrl);
-    }, 50);
+    const jumpUrl = `${pdfUrl}#page=${page}`;
+    setRightPdfUrl(jumpUrl);
+    setViewerKey(k => k + 1); // ← Safari対策
   };
 
+  // ===== URLクリーンアップ =====
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    };
+  }, [pdfUrl]);
+
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+    <div className="flex h-screen bg-gray-100">
 
-      {/* ===== 上部操作バー ===== */}
-      <div style={{ padding: 10, borderBottom: "1px solid #ccc" }}>
+      {/* ===== 左ペイン：全文固定 ===== */}
+      <div className="w-1/2 bg-white border-r flex flex-col">
 
-        <input
-          type="file"
-          accept="application/pdf"
-          onChange={(e) => handleFile(e.target.files?.[0])}
-        />
-
-        {fileName && (
-          <span style={{ marginLeft: 12 }}>
-            読込中: {fileName}
-          </span>
-        )}
-
-        <span style={{ marginLeft: 20 }}>
-          ページジャンプ:
-        </span>
-
-        <input
-          style={{ width: 80, marginLeft: 6 }}
-          value={jumpPage}
-          onChange={(e) => setJumpPage(e.target.value)}
-          placeholder="例: 41"
-        />
-
-        <button
-          style={{ marginLeft: 6 }}
-          onClick={handleJump}
-        >
-          ジャンプ
-        </button>
-
-      </div>
-
-      {/* ===== 進捗表示 ===== */}
-      {isGenerating && (
-        <div style={{ padding: 8, background: "#f5f5f5" }}>
-          条番号対応表 生成中… {progress}%
-          <div style={{ height: 6, background: "#ddd", marginTop: 4 }}>
-            <div
-              style={{
-                width: `${progress}%`,
-                height: "100%",
-                background: "#4caf50"
-              }}
-            />
-          </div>
+        <div className="p-3 border-b font-bold text-lg">
+          全文表示
         </div>
-      )}
 
-      {/* ===== 本体 ===== */}
-      <div style={{ flex: 1, display: "flex" }}>
+        <div className="p-3 border-b flex gap-2 items-center">
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => handleFile(e.target.files[0])}
+          />
+          {error && <span className="text-red-500 text-sm">{error}</span>}
+        </div>
 
-        {/* ===== 左：全文 ===== */}
-        <div style={{ width: "50%", borderRight: "1px solid #ccc" }}>
+        <div className="flex-1 bg-gray-300">
           {pdfUrl ? (
-            <iframe
-              title="full"
-              src={pdfUrl}
-              width="100%"
-              height="100%"
-            />
-          ) : (
-            <div style={{ padding: 20 }}>PDFを選択してください</div>
-          )}
-        </div>
+            <>
+              {/* iframe（通常ブラウザ用） */}
+              <iframe
+                key={`left-${viewerKey}`}
+                src={pdfUrl}
+                title="PDF Left Viewer"
+                className="w-full h-full"
+              />
 
-        {/* ===== 右：ジャンプ先 ===== */}
-        <div style={{ width: "50%" }}>
-          {rightPdfUrl ? (
-            <iframe
-              title="jump"
-              src={rightPdfUrl}
-              width="100%"
-              height="100%"
-            />
+              {/* embed（iPad / Safari フォールバック） */}
+              <embed
+                src={pdfUrl}
+                type="application/pdf"
+                className="hidden"
+              />
+            </>
           ) : (
-            <div style={{ padding: 20 }}>ジャンプ待機中</div>
+            <div className="h-full flex items-center justify-center text-gray-600">
+              PDFを選択してください
+            </div>
           )}
         </div>
 
       </div>
 
-      {error && (
-        <div style={{ color: "red", padding: 8 }}>
-          {error}
+      {/* ===== 右ペイン：ジャンプ表示 ===== */}
+      <div className="w-1/2 flex flex-col">
+
+        <div className="p-3 bg-white border-b flex gap-2 items-center">
+          <input
+            type="number"
+            placeholder="ページ番号"
+            value={jumpPage}
+            onChange={(e) => setJumpPage(e.target.value)}
+            className="border px-2 py-1 w-32"
+          />
+
+          <button
+            onClick={handleJump}
+            className="bg-blue-600 text-white px-3 py-1 rounded"
+          >
+            ジャンプ
+          </button>
         </div>
-      )
+
+        <div className="flex-1 bg-gray-300">
+          {rightPdfUrl ? (
+            <>
+              {/* iframe */}
+              <iframe
+                key={`right-${viewerKey}`}
+                src={rightPdfUrl}
+                title="PDF Right Viewer"
+                className="w-full h-full"
+              />
+
+              {/* embed fallback */}
+              <embed
+                src={rightPdfUrl}
+                type="application/pdf"
+                className="hidden"
+              />
+            </>
+          ) : (
+            <div className="h-full flex items-center justify-center text-gray-600">
+              PDFを読み込むと表示されます
+            </div>
+          )}
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+// ===== テストケース =====
+// 1. PDF選択 → 左右にPDF表示される
+// 2. ページ番号入力 → 右のみページジャンプ
+// 3. Safari / iPad → 表示される
+// 4. 大容量PDF → フリーズしない
+// 5. 連続ジャンプ → 正しく更新される
+// 6. PDF再読み込み → 古いURLが破棄される
