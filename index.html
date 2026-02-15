@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>法律 条文ビューア</title>
+  <title>法律 条番号 → ページ JSON編集ツール</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <style>
@@ -10,187 +10,157 @@
       margin: 0;
       font-family: system-ui, -apple-system, sans-serif;
       background: #f3f4f6;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+      padding: 20px;
     }
 
-    .topbar {
+    h1 {
+      margin-top: 0;
+    }
+
+    .card {
       background: white;
-      padding: 10px;
-      border-bottom: 1px solid #ddd;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
+      padding: 16px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 16px;
     }
 
-    .progress {
-      background: #fff7cc;
-      border-bottom: 1px solid #eee;
-      padding: 6px 12px;
-      font-size: 14px;
-    }
-
-    .main {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
-    }
-
-    .pane {
-      width: 50%;
-      height: 100%;
-      border-right: 1px solid #ddd;
-      background: #ddd;
-    }
-
-    .pane:last-child {
-      border-right: none;
-    }
-
-    iframe {
+    table {
       width: 100%;
-      height: 100%;
-      border: none;
-      background: white;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border-bottom: 1px solid #eee;
+      padding: 8px;
+      text-align: left;
+    }
+
+    input {
+      padding: 6px;
+      width: 120px;
     }
 
     button {
       padding: 6px 12px;
-      background: #2563eb;
-      color: white;
       border: none;
       border-radius: 6px;
+      background: #2563eb;
+      color: white;
       cursor: pointer;
+      margin-right: 6px;
     }
 
-    input[type="number"], input[type="text"] {
-      padding: 4px;
-      width: 120px;
+    .danger {
+      background: #dc2626;
     }
+
   </style>
 </head>
 
 <body>
 
-<div class="topbar">
-  <input type="file" id="fileInput" accept="application/pdf" />
+<h1>条番号 → ページ 対応表 JSON 編集ツール</h1>
 
-  <span id="fileName" style="font-size:14px;color:#555"></span>
-
-  <span>条番号ジャンプ:</span>
-  <input type="text" id="articleInput" placeholder="例: 11" />
-  <button onclick="jumpArticle()">条文ジャンプ</button>
-
-  <span id="error" style="color:red;font-size:14px"></span>
+<div class="card">
+  <h3>JSON読み込み</h3>
+  <input type="file" id="jsonFile" accept="application/json" />
 </div>
 
-<div id="progress" class="progress" style="display:none">
-  条番号対応表 生成中… <span id="progressNum">0</span>%
+<div class="card">
+  <h3>条文追加</h3>
+  条番号 <input id="articleInput" placeholder="例：11" />
+  ページ <input id="pageInput" type="number" placeholder="例：41" />
+  <button onclick="addRow()">追加</button>
 </div>
 
-<div class="main">
-  <div class="pane">
-    <iframe id="leftPdf"></iframe>
-  </div>
-  <div class="pane">
-    <iframe id="rightPdf"></iframe>
-  </div>
+<div class="card">
+  <h3>対応表</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>条番号</th>
+        <th>ページ</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <button onclick="downloadJson()">JSON保存</button>
 </div>
 
 <script>
-let pdfUrl = null;
+let articleMap = {};
 
-// ===== 仮：条番号 → ページ対応表 =====
-// ※ ここを将来自動生成 or JSON化可能
-const articlePageMap = {
-  "1": 1,
-  "2": 2,
-  "3": 3,
-  "4": 5,
-  "5": 7,
-  "10": 20,
-  "11": 41
-};
+const tbody = document.getElementById("tableBody");
 
-const fileInput = document.getElementById("fileInput");
-const fileNameLabel = document.getElementById("fileName");
-const errorLabel = document.getElementById("error");
-const leftPdf = document.getElementById("leftPdf");
-const rightPdf = document.getElementById("rightPdf");
-const progressBox = document.getElementById("progress");
-const progressNum = document.getElementById("progressNum");
-
-fileInput.addEventListener("change", e => {
+// ===== JSON読み込み =====
+document.getElementById("jsonFile").addEventListener("change", e => {
   const file = e.target.files[0];
   if (!file) return;
 
-  try {
-    errorLabel.textContent = "";
-
-    if (file.type !== "application/pdf") {
-      throw new Error("PDFファイルを選択してください");
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      articleMap = JSON.parse(reader.result);
+      renderTable();
+    } catch {
+      alert("JSON読み込み失敗");
     }
-
-    pdfUrl = URL.createObjectURL(file);
-
-    leftPdf.src = pdfUrl;
-    rightPdf.src = pdfUrl;
-
-    fileNameLabel.textContent = "読込中: " + file.name;
-
-    startFakeProgress();
-
-  } catch (err) {
-    errorLabel.textContent = err.message;
-  }
+  };
+  reader.readAsText(file);
 });
 
-function jumpArticle() {
-  if (!pdfUrl) return;
+// ===== 行追加 =====
+function addRow() {
+  const art = document.getElementById("articleInput").value.trim();
+  const page = Number(document.getElementById("pageInput").value);
 
-  const article = document.getElementById("articleInput").value.trim();
+  if (!art || !page) return alert("入力してください");
 
-  const targetPage = articlePageMap[article];
-
-  if (!targetPage) {
-    errorLabel.textContent = "対応ページ未登録の条番号です";
-    return;
-  }
-
-  errorLabel.textContent = "";
-
-  rightPdf.src = "";
-  setTimeout(() => {
-    rightPdf.src = pdfUrl + "#page=" + targetPage;
-  }, 50);
+  articleMap[art] = page;
+  renderTable();
 }
 
-function startFakeProgress() {
-  progressBox.style.display = "block";
-  let p = 0;
+// ===== 削除 =====
+function deleteRow(key) {
+  delete articleMap[key];
+  renderTable();
+}
 
-  const timer = setInterval(() => {
-    p += 10;
-    progressNum.textContent = p;
+// ===== 表描画 =====
+function renderTable() {
+  tbody.innerHTML = "";
 
-    if (p >= 100) {
-      clearInterval(timer);
-      setTimeout(() => {
-        progressBox.style.display = "none";
-      }, 500);
-    }
-  }, 200);
+  Object.keys(articleMap)
+    .sort((a,b)=>Number(a)-Number(b))
+    .forEach(key => {
+      const tr = document.createElement("tr");
+
+      tr.innerHTML = `
+        <td>${key}</td>
+        <td>${articleMap[key]}</td>
+        <td><button class="danger" onclick="deleteRow('${key}')">削除</button></td>
+      `;
+
+      tbody.appendChild(tr);
+    });
+}
+
+// ===== JSON保存 =====
+function downloadJson() {
+  const blob = new Blob([JSON.stringify(articleMap, null, 2)], { type:"application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "law_article_map.json";
+  a.click();
 }
 </script>
 
 </body>
 </html>
-
-// ===== テストケース =====
-// 1. PDF読込 → 左右にPDF表示
-// 2. 条番号入力 → 右のみジャンプ
-// 3. 未登録条番号 → エラー表示
-// 4. PDF未読込 → 何も起きない
-// 5. 連続読込 → 正常切替
