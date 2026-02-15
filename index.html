@@ -1,150 +1,180 @@
-// 国保法 条文ビューア（左：全文固定 / 右：条文ジャンプ対応 / 複数法律拡張前提）
+<!-- 国保法 条文ビューア（GitHub Pages / iPad / 完全静的版） -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>条文ビューア</title>
 
-import React, { useState } from "react";
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f3f4f6;
+    }
 
-// ===== 設計方針 =====
-// ・pdf.js 不使用（環境依存回避）
-// ・ブラウザ標準PDF Viewer 使用
-// ・#page= でページジャンプ制御
+    .layout {
+      display: flex;
+      height: 100vh;
+    }
 
-export default function KokuhouLawViewer() {
+    .left {
+      width: 40%;
+      background: white;
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+    }
 
-  const [pdfUrl, setPdfUrl] = useState(null);
-  const [fileName, setFileName] = useState("");
-  const [error, setError] = useState(null);
+    .right {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
 
-  const [jumpPage, setJumpPage] = useState("");
-  const [rightPdfUrl, setRightPdfUrl] = useState(null);
+    .header {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      background: white;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
 
-  // ===== PDF読み込み =====
-  const handleFile = async (file) => {
-    if (!file) return;
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
 
-    try {
-      setError(null);
+    .viewer {
+      flex: 1;
+      background: #ccc;
+    }
 
-      if (file.type !== "application/pdf") {
-        throw new Error("PDFファイルを選択してください");
+    input[type="number"] {
+      width: 120px;
+      padding: 6px;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 8px 14px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      background: #2563eb;
+      color: white;
+    }
+
+    button:hover {
+      opacity: 0.9;
+      cursor: pointer;
+    }
+
+    .error {
+      color: red;
+      font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        flex-direction: column;
       }
-
-      const url = URL.createObjectURL(file);
-
-      setPdfUrl(url);
-      setRightPdfUrl(url);
-      setFileName(file.name);
-
-    } catch (e) {
-      console.error("PDF LOAD ERROR:", e);
-      setError(e?.message || "PDF読み込みエラー");
+      .left {
+        width: 100%;
+        height: 50%;
+      }
+      .right {
+        height: 50%;
+      }
     }
-  };
+  </style>
+</head>
 
-  // ===== 条文ジャンプ =====
-  const handleJump = () => {
-    if (!pdfUrl) return;
+<body>
 
-    const page = Number(jumpPage);
+<div class="layout">
 
-    if (!page || page <= 0) {
-      setError("正しいページ番号を入力してください");
-      return;
-    }
-
-    setError(null);
-    setRightPdfUrl(`${pdfUrl}#page=${page}`);
-  };
-
-  return (
-    <div className="flex h-screen bg-gray-100">
-
-      {/* ===== 左ペイン：全文固定 ===== */}
-      <div className="w-1/2 bg-white border-r flex flex-col">
-
-        <div className="p-4 border-b font-bold text-lg">
-          全文表示
-        </div>
-
-        <div className="flex-1 bg-gray-200">
-          {pdfUrl ? (
-            <iframe
-              src={pdfUrl}
-              title="Full PDF Viewer"
-              className="w-full h-full"
-            />
-          ) : (
-            <div className="h-full flex items-center justify-center text-gray-600">
-              PDFを選択してください
-            </div>
-          )}
-        </div>
-
-      </div>
-
-      {/* ===== 右ペイン：条文ジャンプ ===== */}
-      <div className="w-1/2 flex flex-col">
-
-        <div className="p-3 bg-white border-b flex gap-3 items-center">
-
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => handleFile(e.target.files[0])}
-          />
-
-          <input
-            type="number"
-            placeholder="ページ番号"
-            value={jumpPage}
-            onChange={(e) => setJumpPage(e.target.value)}
-            className="border px-2 py-1 rounded w-32"
-          />
-
-          <button
-            onClick={handleJump}
-            className="bg-blue-600 text-white px-3 py-1 rounded"
-          >
-            ジャンプ
-          </button>
-
-          {fileName && (
-            <span className="text-sm text-gray-600 truncate max-w-xs">
-              {fileName}
-            </span>
-          )}
-
-          {error && <span className="text-red-500 text-sm">{error}</span>}
-
-        </div>
-
-        <div className="flex-1 bg-gray-300">
-          {rightPdfUrl ? (
-            <iframe
-              src={rightPdfUrl}
-              title="Jump PDF Viewer"
-              className="w-full h-full"
-            />
-          ) : (
-            <div className="h-full flex items-center justify-center text-gray-600">
-              ページジャンプ先がここに表示されます
-            </div>
-          )}
-        </div>
-
-      </div>
-
+  <!-- 左：全文 -->
+  <div class="left">
+    <div class="header">
+      <input type="file" id="fileInput" accept="application/pdf" />
+      <span id="fileName"></span>
+      <span id="error" class="error"></span>
     </div>
-  );
+
+    <div class="viewer">
+      <iframe id="leftPdf"></iframe>
+    </div>
+  </div>
+
+  <!-- 右：ジャンプ表示 -->
+  <div class="right">
+    <div class="header">
+      <input type="number" id="pageInput" placeholder="ページ" />
+      <button onclick="jumpPage()">ジャンプ</button>
+    </div>
+
+    <div class="viewer">
+      <iframe id="rightPdf"></iframe>
+    </div>
+  </div>
+
+</div>
+
+<script>
+
+let pdfUrl = null;
+
+const fileInput = document.getElementById("fileInput");
+const leftPdf = document.getElementById("leftPdf");
+const rightPdf = document.getElementById("rightPdf");
+const fileName = document.getElementById("fileName");
+const errorText = document.getElementById("error");
+
+fileInput.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  errorText.textContent = "";
+
+  if (file.type !== "application/pdf") {
+    errorText.textContent = "PDFを選択してください";
+    return;
+  }
+
+  pdfUrl = URL.createObjectURL(file);
+
+  leftPdf.src = pdfUrl;
+  rightPdf.src = pdfUrl;
+  fileName.textContent = file.name;
+});
+
+function jumpPage() {
+  if (!pdfUrl) return;
+
+  const page = Number(document.getElementById("pageInput").value);
+
+  if (!page || page <= 0) {
+    errorText.textContent = "正しいページを入力してください";
+    return;
+  }
+
+  errorText.textContent = "";
+  rightPdf.src = pdfUrl + "#page=" + page;
 }
 
-// ===== 今後拡張しやすいポイント =====
-// ・法律切替セレクタ追加可能
-// ・条文JSON検索追加可能
-// ・ブックマーク保存追加可能
-// ・iPad UI最適化対応可能
+</script>
 
-// ===== テストケース =====
-// 1. PDF読込 → 左に全文表示
-// 2. ページ番号入力 → 右に該当ページ表示
-// 3. 不正ページ → エラー表示
-// 4. PDF再読込 → 両ペイン更新
-// 5. 連続ジャンプ → 正常表示
+</body>
+</html>
+
+<!-- ===== テストケース =====
+1. PDF選択 → 左右に表示
+2. ページジャンプ → 右だけ移動
+3. PDF以外 → エラー表示
+4. iPad Safari → 表示可能
+5. GitHub Pages → そのまま動作
+6. オフライン → ローカルPDF表示OK
+-->
